@@ -1,46 +1,40 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { checkoutSale } from '../dataManager';
-import { 
-  Search, 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  Receipt, 
-  Printer, 
-  X, 
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  Receipt,
+  Printer,
+  X,
   Check,
   AlertTriangle,
   Package
 } from 'lucide-react';
 
 export default function POSView() {
-  // 1. جلب البيانات من قاعدة البيانات
   const products = useLiveQuery(() => db.products.toArray()) || [];
   const dbCategories = useLiveQuery(() => db.categories.toArray()) || [];
-
-  // دمج تصنيف "الكل" مع التصنيفات الديناميكية المجلوبة
   const categoriesList = ['الكل', ...dbCategories.map(c => c.name)];
 
-  // 2. حالات الواجهة (States)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('الكل');
   const [cart, setCart] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [discount, setDiscount] = useState(0); // الخصم بالدينار
+  const [discount, setDiscount] = useState(0);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
 
-  // 3. تصفية المنتجات بناءً على البحث والتصنيف
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'الكل' || product.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  // 4. إدارة السلة
   const addToCart = (product) => {
     if (product.stock <= 0) {
       alert('عذراً، هذا المنتج غير متوفر في المخزن حالياً!');
@@ -54,7 +48,7 @@ export default function POSView() {
           alert(`عذراً، الكمية المطلوبة تتجاوز المتاح في المخزن (${product.stock} فقط).`);
           return prevCart;
         }
-        return prevCart.map(item => 
+        return prevCart.map(item =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
@@ -63,49 +57,40 @@ export default function POSView() {
   };
 
   const updateCartQuantity = (productId, change, maxStock) => {
-    setCart(prevCart => {
-      return prevCart.map(item => {
-        if (item.id === productId) {
-          const newQty = item.quantity + change;
-          if (newQty <= 0) return null;
-          if (newQty > maxStock) {
-            alert(`المتاح في المخزن هو ${maxStock} فقط.`);
-            return item;
-          }
-          return { ...item, quantity: newQty };
-        }
+    setCart(prevCart => prevCart.map(item => {
+      if (item.id !== productId) return item;
+
+      const newQty = item.quantity + change;
+      if (newQty <= 0) return null;
+      if (newQty > maxStock) {
+        alert(`المتاح في المخزن هو ${maxStock} فقط.`);
         return item;
-      }).filter(Boolean);
-    });
+      }
+      return { ...item, quantity: newQty };
+    }).filter(Boolean));
   };
 
   const removeFromCart = (productId) => {
     setCart(prevCart => prevCart.filter(item => item.id !== productId));
   };
 
-  // 5. حساب الإجماليات
   const cartSubtotal = cart.reduce((sum, item) => sum + (item.sellPrice * item.quantity), 0);
   const cartTotalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-  
-  // التأكد من أن قيمة الخصم لا تتجاوز المجموع الفرعي ولا تقل عن الصفر
   const validDiscount = Math.max(0, Math.min(discount, cartSubtotal));
   const cartTotal = cartSubtotal - validDiscount;
 
-  // 6. عملية إتمام البيع وحفظها في قاعدة البيانات
   const handleConfirmCheckout = async () => {
     if (cart.length === 0) return;
     setCheckoutError(null);
 
     try {
-      // أ. التحقق الإضافي من توفر المخزون قبل الحفظ محلياً
       for (const item of cart) {
         const dbProduct = await db.products.get(item.id);
         if (!dbProduct || dbProduct.stock < item.quantity) {
-          throw new Error(`المنتج "${item.name}" لم يعد يتوفر منه الكمية المطلوبة. المتاح: ${dbProduct ? dbProduct.stock : 0}`);
+          throw new Error(`المنتج "${item.name}" لم يعد يتوفر منه المقدار المطلوب. المتاح: ${dbProduct ? dbProduct.stock : 0}`);
         }
       }
 
-      // ب. تمرير العملية لـ DataManager ليقوم بالمزامنة الذكية
       const saleData = {
         date: new Date().toISOString(),
         totalAmount: cartSubtotal,
@@ -115,34 +100,109 @@ export default function POSView() {
 
       await checkoutSale(saleData, cart);
 
-      // مسح السلة وإغلاق النوافذ بعد النجاح
       setCart([]);
       setDiscount(0);
       setIsCartOpen(false);
       setShowReceiptModal(false);
       alert('تم إتمام عملية البيع وحفظ الفاتورة بنجاح!');
-
     } catch (error) {
       console.error('فشلت عملية البيع:', error);
       setCheckoutError(error.message || 'حدث خطأ غير متوقع أثناء إتمام عملية البيع.');
     }
   };
 
-  // دالة لطباعة الفاتورة
   const handlePrint = () => {
     window.print();
   };
 
+  const renderCartItem = (item, isMobile = false) => (
+    <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
+      <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-800/80 flex-shrink-0">
+        {item.image ? (
+          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+        ) : (
+          <Package className="h-4.5 w-4.5 text-slate-400 dark:text-slate-700" />
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 px-3 text-right">
+        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate leading-snug">{item.name}</div>
+        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+          {(item.sellPrice * item.quantity).toLocaleString()} د.ع{isMobile ? ` (${item.sellPrice.toLocaleString()} للقطعة)` : ''}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => updateCartQuantity(item.id, -1, item.stock)}
+          className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
+        >
+          <Minus className="h-3 w-3" />
+        </button>
+        <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 w-5 text-center">{item.quantity}</span>
+        <button
+          onClick={() => updateCartQuantity(item.id, 1, item.stock)}
+          className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+        <button
+          onClick={() => removeFromCart(item.id)}
+          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+
+  const CartFooter = ({ mobile = false }) => (
+    <div className={`${mobile ? 'bg-white dark:bg-slate-800/95 pt-4 mt-4 space-y-3' : 'bg-white dark:bg-slate-900/95 p-4 space-y-4'} border-t border-slate-200 dark:border-slate-700/50 shrink-0 shadow-lg`}>
+      <div className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+        <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">خصم دينار عراقي:</span>
+        <input
+          type="number"
+          placeholder="0"
+          min="0"
+          max={cartSubtotal}
+          value={discount || ''}
+          onChange={(e) => setDiscount(Number(e.target.value))}
+          className={`${mobile ? 'w-32' : 'w-28'} bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-left rounded-lg px-2 py-1 text-xs font-bold focus:border-red-500 focus:outline-none`}
+        />
+      </div>
+
+      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex justify-between">
+          <span>المجموع الفرعي:</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-200">{cartSubtotal.toLocaleString()} د.ع</span>
+        </div>
+        {validDiscount > 0 && (
+          <div className="flex justify-between text-red-600 dark:text-red-400 font-semibold">
+            <span>الخصم المستقطع:</span>
+            <span>-{validDiscount.toLocaleString()} د.ع</span>
+          </div>
+        )}
+        <div className="flex justify-between text-sm font-extrabold text-slate-800 dark:text-slate-100 pt-1.5 border-t border-slate-200 dark:border-slate-700/50">
+          <span>الإجمالي النهائي:</span>
+          <span className="text-amber-600 dark:text-amber-400">{cartTotal.toLocaleString()} د.ع</span>
+        </div>
+      </div>
+
+      <button
+        onClick={() => setShowReceiptModal(true)}
+        disabled={cart.length === 0}
+        className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-black py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md transition-colors mt-2"
+      >
+        <Receipt className="h-5 w-5" />
+        <span>إتمام عملية البيع وفاتورة</span>
+      </button>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col md:flex-row h-full relative overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">
-      
-      {/* القسم الأيمن: التصفية والمنتجات */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden border-l border-slate-200 dark:border-slate-800">
-        
-        {/* 1. قسم البحث والتصفية (فصل البحث عن الصنوف كل واحد في صف) */}
-        <div className="p-3 bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 space-y-2.5 sticky top-0 z-20 backdrop-blur-lg">
-          
-          {/* الصف الأول: حقل البحث الممتد */}
+    <div className="flex flex-col md:flex-row h-full min-h-0 relative overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">
+      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden border-l border-slate-200 dark:border-slate-800">
+        <div className="shrink-0 p-3 bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 space-y-2.5 sticky top-0 z-20 backdrop-blur-lg">
           <div className="relative w-full">
             <input
               type="text"
@@ -154,7 +214,6 @@ export default function POSView() {
             <Search className="absolute right-3 top-2.5 text-slate-400 h-4 w-4" />
           </div>
 
-          {/* الصف الثاني: شريط الصنوف (التصنيفات) الأفقي */}
           <div className="flex gap-2 overflow-x-auto pb-1 no-print scrollbar-none">
             {categoriesList.map(category => (
               <button
@@ -163,7 +222,7 @@ export default function POSView() {
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 ${
                   selectedCategory === category
                     ? 'bg-amber-500 text-slate-950 font-extrabold shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
                 {category}
@@ -172,8 +231,7 @@ export default function POSView() {
           </div>
         </div>
 
-        {/* 2. شبكة عرض المنتجات المتجاوبة */}
-        <div className="flex-1 overflow-y-auto p-4 pb-28 md:pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 pb-28 md:pb-6">
           {filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
               <AlertTriangle className="h-10 w-10 mb-2 stroke-[1.5]" />
@@ -184,7 +242,7 @@ export default function POSView() {
               {filteredProducts.map(product => {
                 const inCartItem = cart.find(item => item.id === product.id);
                 const remainingStock = product.stock - (inCartItem ? inCartItem.quantity : 0);
-                
+
                 return (
                   <button
                     key={product.id}
@@ -193,30 +251,23 @@ export default function POSView() {
                     className={`relative flex flex-col overflow-hidden text-right rounded-2xl border transition-all duration-300 ${
                       remainingStock <= 0
                         ? 'bg-slate-200/40 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-700/30 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
-                        : 'bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-650/80 active:scale-95 shadow-sm dark:shadow-md backdrop-blur-md'
+                        : 'bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/50 hover:border-slate-300 dark:hover:border-slate-600 active:scale-95 shadow-sm dark:shadow-md backdrop-blur-md'
                     }`}
                   >
-                    {/* قسم الصورة */}
                     <div className="w-full h-24 relative bg-slate-100 dark:bg-slate-900/40 flex items-center justify-center border-b border-slate-200 dark:border-slate-700/30 overflow-hidden">
                       {product.image ? (
-                        <img 
-                          src={product.image} 
-                          alt={product.name} 
-                          className="w-full h-full object-cover" 
-                        />
+                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="text-slate-400 dark:text-slate-600 flex flex-col items-center gap-1.5">
                           <Package className="h-7 w-7 stroke-[1.2]" />
-                          <span className="text-[9px] text-slate-550">لا توجد صورة</span>
+                          <span className="text-[9px] text-slate-500">لا توجد صورة</span>
                         </div>
                       )}
-                      {/* شارة التصنيف فوق الصورة */}
-                      <span className="absolute top-2 right-2 text-[9px] bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 backdrop-blur-md px-2 py-0.5 rounded-md font-bold border border-slate-250 dark:border-slate-700/50">
+                      <span className="absolute top-2 right-2 text-[9px] bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 backdrop-blur-md px-2 py-0.5 rounded-md font-bold border border-slate-200 dark:border-slate-700/50">
                         {product.category}
                       </span>
                     </div>
 
-                    {/* معلومات المنتج */}
                     <div className="p-3 w-full flex-1 flex flex-col justify-between">
                       <div className="font-bold text-xs text-slate-800 dark:text-slate-200 line-clamp-2 leading-relaxed mb-2 w-full">
                         {product.name}
@@ -224,21 +275,14 @@ export default function POSView() {
 
                       <div className="w-full flex justify-between items-end">
                         <div>
-                          {/* السعر */}
-                          <div className="text-xs font-black text-amber-650 dark:text-amber-400">
+                          <div className="text-xs font-black text-amber-600 dark:text-amber-400">
                             {(product.sellPrice || 0).toLocaleString()} د.ع
                           </div>
-                          {/* المتبقي */}
                           <div className="text-[9px] mt-0.5 text-slate-500 dark:text-slate-400 font-bold">
-                            {remainingStock <= 0 ? (
-                              <span className="text-red-550 font-bold">نفذت</span>
-                            ) : (
-                              <span>المتبقي: {remainingStock}</span>
-                            )}
+                            {remainingStock <= 0 ? <span className="text-red-500 font-bold">نفذت</span> : <span>المتبقي: {remainingStock}</span>}
                           </div>
                         </div>
 
-                        {/* إشارة السلة */}
                         {inCartItem && (
                           <div className="bg-amber-500 text-slate-950 text-[10px] font-black w-5.5 h-5.5 flex items-center justify-center rounded-lg shadow-md shadow-amber-950/40">
                             {inCartItem.quantity}
@@ -254,112 +298,31 @@ export default function POSView() {
         </div>
       </div>
 
-      {/* القسم الأيسر: سلة المشتريات الثابتة (Desktop Sidebar) */}
-      <div className="hidden md:flex w-80 lg:w-96 bg-white dark:bg-slate-800/95 border-r border-slate-200 dark:border-slate-800 flex-col h-full overflow-hidden no-print">
-        <div className="flex items-center gap-2 p-4 border-b border-slate-200 dark:border-slate-700/50">
-          <ShoppingCart className="h-5 w-5 text-amber-500" />
-          <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">سلة المشتريات ({cartTotalItems})</h3>
+      <div className="hidden md:flex w-80 lg:w-96 bg-white dark:bg-slate-800/95 border-r border-slate-200 dark:border-slate-800 flex-col h-[calc(100vh-80px)] max-h-[calc(100vh-80px)] overflow-hidden no-print">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700/50 shrink-0">
+          <div className="flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5 text-amber-500" />
+            <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">سلة المشتريات ({cartTotalItems})</h3>
+          </div>
         </div>
 
-        {cart.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-400 dark:text-slate-550">
-            <ShoppingCart className="h-12 w-12 mb-2 stroke-[1.2] text-slate-350 dark:text-slate-700" />
-            <p className="text-xs font-semibold">السلة فارغة حالياً</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-              {cart.map(item => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
-                  {/* مصغرة صورة السلة */}
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-800/80 flex-shrink-0">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="h-4.5 w-4.5 text-slate-400 dark:text-slate-750" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 px-3 text-right">
-                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate leading-snug">{item.name}</div>
-                    <div className="text-[10px] text-amber-650 dark:text-amber-400 mt-1 font-semibold">
-                      {(item.sellPrice * item.quantity).toLocaleString()} د.ع
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => updateCartQuantity(item.id, -1, item.stock)}
-                      className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
-                    >
-                      <Minus className="h-2.5 w-2.5" />
-                    </button>
-                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 w-5 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => updateCartQuantity(item.id, 1, item.stock)}
-                      className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
-                    >
-                      <Plus className="h-2.5 w-2.5" />
-                    </button>
-                    
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+          {cart.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+              <ShoppingCart className="h-12 w-12 mb-2 stroke-[1.2] text-slate-300 dark:text-slate-700" />
+              <p className="text-xs font-semibold">السلة فارغة حالياً</p>
             </div>
+          ) : (
+            cart.map(item => renderCartItem(item))
+          )}
+        </div>
 
-            {/* الحسابات والتشيك أوت للسايد بار */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-900/50 space-y-4">
-              <div className="flex items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
-                <span className="text-xs text-slate-550 dark:text-slate-400 whitespace-nowrap">خصم دينار عراقي:</span>
-                <input
-                  type="number"
-                  placeholder="0"
-                  min="0"
-                  max={cartSubtotal}
-                  value={discount || ''}
-                  onChange={(e) => setDiscount(Number(e.target.value))}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-750 text-slate-800 dark:text-slate-100 text-left rounded-lg px-2 py-1 text-xs font-bold w-28 focus:border-red-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                <div className="flex justify-between">
-                  <span>المجموع الفرعي:</span>
-                  <span className="font-semibold text-slate-850 dark:text-slate-200">{cartSubtotal.toLocaleString()} د.ع</span>
-                </div>
-                {validDiscount > 0 && (
-                  <div className="flex justify-between text-red-650 dark:text-red-400 font-semibold">
-                    <span>الخصم المستقطع:</span>
-                    <span>-{validDiscount.toLocaleString()} د.ع</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-extrabold text-slate-800 dark:text-slate-100 pt-1.5 border-t border-slate-200 dark:border-slate-700/50">
-                  <span>الإجمالي النهائي:</span>
-                  <span className="text-amber-600 dark:text-amber-400">{cartTotal.toLocaleString()} د.ع</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowReceiptModal(true)}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md transition-colors mt-2"
-              >
-                <Receipt className="h-5 w-5 text-slate-950" />
-                <span>إتمام عملية البيع وفاتورة</span>
-              </button>
-            </div>
-          </>
-        )}
+        <CartFooter />
       </div>
 
-      {/* 3. شريط السلة العائم (للموبايل فقط) */}
       {cart.length > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-md mx-auto px-4 z-20 no-print md:hidden">
-          <div 
+          <div
             onClick={() => setIsCartOpen(true)}
             className="flex items-center justify-between bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 rounded-2xl py-3 px-5 shadow-lg shadow-amber-950/50 cursor-pointer transform hover:scale-[1.01] active:scale-[0.99] transition-all duration-300"
           >
@@ -375,7 +338,7 @@ export default function POSView() {
                 <div className="text-sm font-black text-slate-950">{cartTotal.toLocaleString()} د.ع</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-1.5 font-bold text-xs bg-slate-950/15 hover:bg-slate-950/25 py-1.5 px-3.5 rounded-xl border border-slate-950/20 text-slate-950">
               <span>عرض السلة</span>
               <Plus className="h-3.5 w-3.5 text-slate-950" />
@@ -384,20 +347,19 @@ export default function POSView() {
         </div>
       )}
 
-      {/* 4. درج السلة للموبايل فقط */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/75 z-40 flex items-end justify-center no-print md:hidden">
           <div className="absolute inset-0" onClick={() => setIsCartOpen(false)}></div>
-          
-          <div className="relative w-full max-w-md bg-white dark:bg-slate-800/90 rounded-t-3xl border-t border-slate-200 dark:border-slate-700/50 p-5 z-50 max-h-[85vh] flex flex-col backdrop-blur-md shadow-sm dark:shadow-md">
-            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4 cursor-pointer" onClick={() => setIsCartOpen(false)}></div>
-            
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700/50 mb-4">
+
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-800/90 rounded-t-3xl border-t border-slate-200 dark:border-slate-700/50 p-5 z-50 h-[85vh] max-h-[85vh] min-h-0 flex flex-col overflow-hidden backdrop-blur-md shadow-sm dark:shadow-md">
+            <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-4 cursor-pointer shrink-0" onClick={() => setIsCartOpen(false)}></div>
+
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700/50 mb-4 shrink-0">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5 text-amber-500" />
                 <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">سلة المشتريات ({cartTotalItems})</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setIsCartOpen(false)}
                 className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -405,98 +367,18 @@ export default function POSView() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3.5 pr-1">
-              {cart.map(item => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm">
-                  {/* مصغرة صورة السلة */}
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-800/80">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="h-4.5 w-4.5 text-slate-400 dark:text-slate-750" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 px-3 text-right">
-                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate leading-snug">{item.name}</div>
-                    <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
-                      {(item.sellPrice * item.quantity).toLocaleString()} د.ع ({item.sellPrice.toLocaleString()} للقطعة)
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => updateCartQuantity(item.id, -1, item.stock)}
-                      className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 w-5 text-center">{item.quantity}</span>
-                    <button
-                      onClick={() => updateCartQuantity(item.id, 1, item.stock)}
-                      className="p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-650 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700/30"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                    
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="p-1.5 mr-1 text-red-500 hover:bg-red-950/30 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex-1 overflow-y-auto p-0 space-y-3 min-h-0">
+              {cart.map(item => renderCartItem(item, true))}
             </div>
 
-            <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 mt-4 space-y-3">
-              <div className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl border border-slate-200 dark:border-slate-800/60">
-                <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">خصم دينار عراقي:</span>
-                <input
-                  type="number"
-                  placeholder="0"
-                  min="0"
-                  max={cartSubtotal}
-                  value={discount || ''}
-                  onChange={(e) => setDiscount(Number(e.target.value))}
-                  className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-left rounded-lg px-2 py-1 text-xs font-bold w-32 focus:border-red-500"
-                />
-              </div>
-
-              <div className="space-y-1.5 px-1.5 text-xs text-slate-500 dark:text-slate-400">
-                <div className="flex justify-between">
-                  <span>المجموع الفرعي:</span>
-                  <span className="font-semibold text-slate-850 dark:text-slate-200">{cartSubtotal.toLocaleString()} د.ع</span>
-                </div>
-                {validDiscount > 0 && (
-                  <div className="flex justify-between text-red-650 dark:text-red-400 font-semibold">
-                    <span>الخصم المستقطع:</span>
-                    <span>-{validDiscount.toLocaleString()} د.ع</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-extrabold text-slate-800 dark:text-slate-100 pt-1.5 border-t border-slate-200 dark:border-slate-700/50">
-                  <span>الإجمالي النهائي:</span>
-                  <span className="text-amber-600 dark:text-amber-400">{cartTotal.toLocaleString()} د.ع</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowReceiptModal(true)}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-amber-950/30 transition-colors mt-2"
-              >
-                <Receipt className="h-5 w-5 text-slate-950" />
-                <span>إتمام عملية البيع وفاتورة</span>
-              </button>
-            </div>
+            <CartFooter mobile />
           </div>
         </div>
       )}
 
-      {/* 5. مودال الفاتورة والتشيك أوت */}
       {showReceiptModal && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/50 rounded-3xl p-5 overflow-y-auto max-h-[90vh] flex flex-col justify-between font-sans backdrop-blur-md shadow-sm dark:shadow-md">
-            
             <div className="print-area bg-white text-slate-950 p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
               <div className="mb-4">
                 <h2 className="text-lg font-black tracking-wide text-slate-900">متجر O2</h2>
@@ -550,7 +432,7 @@ export default function POSView() {
             </div>
 
             {checkoutError && (
-              <div className="bg-red-955/40 border border-red-800 text-red-400 dark:text-red-300 text-xs p-3 rounded-xl mt-4 text-right">
+              <div className="bg-red-950/40 border border-red-800 text-red-400 dark:text-red-300 text-xs p-3 rounded-xl mt-4 text-right">
                 {checkoutError}
               </div>
             )}
@@ -579,7 +461,6 @@ export default function POSView() {
                 <span>إلغاء</span>
               </button>
             </div>
-
           </div>
         </div>
       )}
