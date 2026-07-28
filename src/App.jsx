@@ -21,12 +21,8 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // الاشتراك بالـ Realtime ومزامنة البيانات عند عودة الاتصال بالإنترنت
   useEffect(() => {
-    // جلب وتحديث كامل البيانات من السحابة عند بدء التشغيل
     pullAllData();
-
-    // تشغيل مزامنة البيانات المعلقة بالخلفية عند بدء تشغيل التطبيق
     syncOfflineData();
 
     const handleOnline = () => {
@@ -34,7 +30,6 @@ export default function App() {
     };
     window.addEventListener('online', handleOnline);
 
-    // أ. الاشتراك المباشر لجدول المنتجات
     const productsSub = supabase
       .channel('realtime:products')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, async (payload) => {
@@ -56,7 +51,6 @@ export default function App() {
       })
       .subscribe();
 
-    // ب. الاشتراك المباشر لجدول التصنيفات
     const categoriesSub = supabase
       .channel('realtime:categories')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, async (payload) => {
@@ -73,7 +67,6 @@ export default function App() {
       })
       .subscribe();
 
-    // ج. الاشتراك المباشر لجدول المبيعات
     const salesSub = supabase
       .channel('realtime:sales')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, async (payload) => {
@@ -93,7 +86,6 @@ export default function App() {
       })
       .subscribe();
 
-    // د. الاشتراك المباشر لجدول المواد المباعة
     const saleItemsSub = supabase
       .channel('realtime:sale_items')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sale_items' }, async (payload) => {
@@ -128,11 +120,21 @@ export default function App() {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  const navButtonClass = (tab) => `px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+    activeTab === tab
+      ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
+      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+  }`;
+
+  const mobileNavClass = (tab) => `flex flex-col items-center gap-1 transition-all py-1 px-3.5 rounded-xl ${
+    activeTab === tab
+      ? 'text-amber-500 dark:text-amber-400 font-black scale-105 bg-amber-500/10'
+      : 'text-slate-500 dark:text-slate-400 font-semibold'
+  }`;
+
   return (
     <div className="w-full min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex justify-center transition-colors duration-300">
       <div className="w-full max-w-7xl min-h-screen bg-white dark:bg-slate-900 border-x border-slate-200 dark:border-slate-800 flex flex-col relative shadow-2xl md:pb-0 pb-16">
-
-        {/* الترويسة الرئيسية */}
         <header className="no-print bg-white/90 dark:bg-slate-900/90 backdrop-blur-lg border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-30 transition-colors">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center shadow-md">
@@ -144,55 +146,28 @@ export default function App() {
             </div>
           </div>
 
-          {/* أزرار التنقل للشاشات الكبيرة */}
           <div className="hidden md:flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <button
-              onClick={() => setActiveTab('pos')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'pos'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
-                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
-              }`}
-            >
+            <button onClick={() => setActiveTab('pos')} className={navButtonClass('pos')}>
               <ShoppingCart className="h-3.5 w-3.5" />
               <span>الكاشير</span>
             </button>
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'products'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
-                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
-              }`}
-            >
+            <button onClick={() => setActiveTab('products')} className={navButtonClass('products')}>
               <Package className="h-3.5 w-3.5" />
               <span>المنتجات</span>
             </button>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'reports'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
-                  : 'text-slate-650 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
-              }`}
-            >
+            <button onClick={() => setActiveTab('reports')} className={navButtonClass('reports')}>
               <BarChart3 className="h-3.5 w-3.5" />
               <span>التقارير</span>
             </button>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* زر الدارك مود واللايت مود */}
             <button
               onClick={toggleTheme}
               className="p-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-all active:scale-95"
               title={theme === 'dark' ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
             >
-              {theme === 'dark' ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full text-[9px] font-bold text-slate-700 dark:text-slate-300">
@@ -202,49 +177,28 @@ export default function App() {
           </div>
         </header>
 
-        {/* جسم الشاشات */}
         <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors">
           {activeTab === 'pos' && <POSView />}
           {activeTab === 'products' && <ProductsManagement />}
           {activeTab === 'reports' && <ReportsView />}
         </main>
 
-        {/* شريط التنقل السفلي */}
         <nav className="no-print bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 fixed bottom-0 left-0 right-0 max-w-md mx-auto py-2 px-4 flex justify-around items-center z-30 shadow-xl md:hidden">
-          <button
-            onClick={() => setActiveTab('pos')}
-            className={`flex flex-col items-center gap-1 transition-all py-1 px-3.5 rounded-xl ${activeTab === 'pos'
-                ? 'text-amber-500 dark:text-amber-400 font-black scale-105 bg-amber-500/10'
-                : 'text-slate-500 dark:text-slate-400 font-semibold'
-              }`}
-          >
+          <button onClick={() => setActiveTab('pos')} className={mobileNavClass('pos')}>
             <ShoppingCart className="h-4.5 w-4.5" />
             <span className="text-[10px]">الكاشير</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`flex flex-col items-center gap-1 transition-all py-1 px-3.5 rounded-xl ${activeTab === 'products'
-                ? 'text-amber-500 dark:text-amber-400 font-black scale-105 bg-amber-500/10'
-                : 'text-slate-500 dark:text-slate-400 font-semibold'
-              }`}
-          >
+          <button onClick={() => setActiveTab('products')} className={mobileNavClass('products')}>
             <Package className="h-4.5 w-4.5" />
             <span className="text-[10px]">المنتجات</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex flex-col items-center gap-1 transition-all py-1 px-3.5 rounded-xl ${activeTab === 'reports'
-                ? 'text-amber-500 dark:text-amber-400 font-black scale-105 bg-amber-500/10'
-                : 'text-slate-500 dark:text-slate-400 font-semibold'
-              }`}
-          >
+          <button onClick={() => setActiveTab('reports')} className={mobileNavClass('reports')}>
             <BarChart3 className="h-4.5 w-4.5" />
             <span className="text-[10px]">التقارير</span>
           </button>
         </nav>
-
       </div>
     </div>
   );
