@@ -338,7 +338,13 @@ export async function checkoutSale(saleData, items) {
       }
       synced = true;
     } catch (err) {
-      console.error('فشلت المزامنة المباشرة للفاتورة مع Supabase، سيتم الحفظ محلياً وتأجيل المزامنة:', err);
+      console.error('فشلت المزامنة المباشرة للفاتورة مع Supabase، التفاصيل:', {
+        name: err.name,
+        message: err.message,
+        details: err.details || err,
+        hint: err.hint,
+        code: err.code
+      });
     }
   }
 
@@ -379,6 +385,9 @@ export async function checkoutSale(saleData, items) {
       }
     }
   });
+
+  // جلب الفواتير المحدثة لضمان التزامن
+  await fetchInvoices();
 }
 
 export async function deleteSale(saleId) {
@@ -496,7 +505,13 @@ export async function markSaleAsPaid(saleId) {
       if (error) throw error;
       updatedOnSupabase = true;
     } catch (err) {
-      console.error('فشل تحديث حالة الفاتورة على Supabase، سيتم جدولتها للتحديث لاحقاً:', err);
+      console.error('فشل تحديث حالة الفاتورة على Supabase، التفاصيل:', {
+        name: err.name,
+        message: err.message,
+        details: err.details || err,
+        hint: err.hint,
+        code: err.code
+      });
     }
   }
 
@@ -506,6 +521,16 @@ export async function markSaleAsPaid(saleId) {
     const filtered = pendingUpdates.filter(u => u.id !== saleId);
     filtered.push({ id: saleId, status: 'paid', paidAt });
     localStorage.setItem('pending_sale_updates', JSON.stringify(filtered));
+  }
+
+  // المزامنة الفورية لأي بيانات معلقة وجلب الفواتير المحدثة لضمان التزامن
+  if (isOnline) {
+    try {
+      await syncOfflineData();
+    } catch (syncErr) {
+      console.error('فشل المزامنة الفورية للبيانات المعلقة:', syncErr);
+    }
+    await fetchInvoices();
   }
 }
 
@@ -764,13 +789,77 @@ export async function syncOfflineData() {
           }
         }
       } catch (err) {
-        console.error('فشل مزامنة الفاتورة المعلقة مع السيرفر:', err);
+        console.error('فشل مزامنة الفاتورة المعلقة مع السيرفر، التفاصيل:', {
+          name: err.name,
+          message: err.message,
+          details: err.details || err,
+          hint: err.hint,
+          code: err.code
+        });
       }
     }
 
     console.log('اكتملت مزامنة البيانات المعلقة مع Supabase.');
   } catch (err) {
     console.error('فشلت عملية المزامنة الدورية للبيانات:', err);
+  }
+}
+
+// دالة جلب وتحديث المبيعات وتفاصيل الفواتير من Supabase وتخزينها محلياً
+export async function fetchInvoices() {
+  if (!navigator.onLine) return;
+  console.log('جاري إعادة جلب الفواتير وتفاصيلها من Supabase...');
+  try {
+    // 1. جلب وتحديث المبيعات
+    const { data: dbSales, error: salesErr } = await supabase
+      .from('sales')
+      .select('*');
+    
+    if (salesErr) {
+      console.error('فشل جلب الفواتير من السحابة:', salesErr);
+      throw salesErr;
+    } else if (dbSales) {
+      for (const sale of dbSales) {
+        await db.sales.put({
+          id: sale.id,
+          date: sale.date,
+          totalAmount: sale.total_amount,
+          discount: sale.discount,
+          finalAmount: sale.final_amount,
+          syncStatus: 'synced',
+          paymentMethod: sale.payment_method || 'cash',
+          status: sale.status || 'paid',
+          customerName: sale.customer_name || '',
+          paidAt: sale.paid_at || null
+        });
+      }
+    }
+
+    // 2. جلب وتحديث تفاصيل الفواتير
+    const { data: dbItems, error: itemsErr } = await supabase
+      .from('sale_items')
+      .select('*');
+    
+    if (itemsErr) {
+      console.error('فشل جلب تفاصيل الفواتير من السحابة:', itemsErr);
+      throw itemsErr;
+    } else if (dbItems) {
+      for (const item of dbItems) {
+        await db.saleItems.put({
+          id: item.id,
+          saleId: item.sale_id,
+          productId: item.product_id,
+          productName: item.product_name,
+          quantity: item.quantity,
+          unitPrice: item.unit_price,
+          unitBuyPrice: item.unit_buy_price,
+          syncStatus: 'synced'
+        });
+      }
+    }
+    console.log('اكتملت إعادة جلب الفواتير وتفاصيلها بنجاح.');
+  } catch (err) {
+    console.error('خطأ أثناء جلب الفواتير من Supabase:', err);
   }
 }
 
@@ -820,51 +909,8 @@ export async function pullAllData() {
       }
     }
 
-    // 3. جلب وتحديث المبيعات
-    const { data: dbSales, error: salesErr } = await supabase
-      .from('sales')
-      .select('*');
-    
-    if (salesErr) {
-      console.error('فشل جلب الفواتير من السحابة:', salesErr);
-    } else if (dbSales) {
-      for (const sale of dbSales) {
-        await db.sales.put({
-          id: sale.id,
-          date: sale.date,
-          totalAmount: sale.total_amount,
-          discount: sale.discount,
-          finalAmount: sale.final_amount,
-          syncStatus: 'synced',
-          paymentMethod: sale.payment_method || 'cash',
-          status: sale.status || 'paid',
-          customerName: sale.customer_name || '',
-          paidAt: sale.paid_at || null
-        });
-      }
-    }
-
-    // 4. جلب وتحديث تفاصيل الفواتير
-    const { data: dbItems, error: itemsErr } = await supabase
-      .from('sale_items')
-      .select('*');
-    
-    if (itemsErr) {
-      console.error('فشل جلب تفاصيل الفواتير من السحابة:', itemsErr);
-    } else if (dbItems) {
-      for (const item of dbItems) {
-        await db.saleItems.put({
-          id: item.id,
-          saleId: item.sale_id,
-          productId: item.product_id,
-          productName: item.product_name,
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          unitBuyPrice: item.unit_buy_price,
-          syncStatus: 'synced'
-        });
-      }
-    }
+    // 3. جلب وتحديث الفواتير وتفاصيلها
+    await fetchInvoices();
 
     console.log('اكتمل تحديث قاعدة البيانات المحلية بنجاح من Supabase.');
   } catch (err) {

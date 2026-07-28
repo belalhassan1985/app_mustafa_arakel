@@ -5,7 +5,7 @@ import ReportsView from './components/ReportsView';
 import { ShoppingCart, Package, BarChart3, CloudOff, Sun, Moon } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { db } from './db';
-import { syncOfflineData, pullAllData } from './dataManager';
+import { syncOfflineData, pullAllData, fetchInvoices } from './dataManager';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('pos');
@@ -79,10 +79,16 @@ export default function App() {
             totalAmount: payload.new.total_amount,
             discount: payload.new.discount,
             finalAmount: payload.new.final_amount,
+            paymentMethod: payload.new.payment_method || 'cash',
+            status: payload.new.status || 'paid',
+            customerName: payload.new.customer_name || '',
+            paidAt: payload.new.paid_at || null,
             syncStatus: 'synced'
           };
           await db.sales.put(sale);
         }
+        // إعادة جلب الفواتير فوراً لضمان اتساق البيانات
+        await fetchInvoices();
       })
       .subscribe();
 
