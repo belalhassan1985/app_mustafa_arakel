@@ -373,6 +373,93 @@ export async function checkoutSale(saleData, items) {
   });
 }
 
+export async function deleteSale(saleId) {
+  const isOnline = navigator.onLine;
+
+  // 1. Get the sale and sale items to know what products to restore and by how much
+  const sale = await db.sales.get(saleId);
+  if (!sale) return;
+
+  const localItems = await db.saleItems.where('saleId').equals(saleId).toArray();
+
+  // 2. Restore stock for each item
+  for (const item of localItems) {
+    // A. If online and not pending, update Supabase product stock
+    if (isOnline && sale.syncStatus !== 'pending') {
+      try {
+        const { data: dbProd } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', item.productId)
+          .single();
+
+        if (dbProd) {
+          const newStock = Math.max(0, (dbProd.stock || 0) + (item.quantity || 0));
+          await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', item.productId);
+        }
+      } catch (err) {
+        console.error(`فشل تحديث مخزن المنتج ${item.productId} على Supabase:`, err);
+      }
+    }
+  }
+
+  // 3. Delete from Supabase (if online and not pending)
+  let deletedOnSupabase = false;
+  if (isOnline && sale.syncStatus !== 'pending') {
+    try {
+      // First delete sale_items since they might reference the sale
+      const { error: itemsDelErr } = await supabase
+        .from('sale_items')
+        .delete()
+        .eq('sale_id', saleId);
+
+      if (itemsDelErr) throw itemsDelErr;
+
+      const { error: saleDelErr } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', saleId);
+
+      if (saleDelErr) throw saleDelErr;
+      deletedOnSupabase = true;
+    } catch (err) {
+      console.error('فشل حذف الفاتورة من Supabase، سيتم جدولتها للحذف لاحقاً:', err);
+    }
+  }
+
+  // If offline/failed, track pending deletion (only if it was synced)
+  if (!deletedOnSupabase && sale.syncStatus !== 'pending') {
+    const pendingDeletions = JSON.parse(localStorage.getItem('pending_deletions') || '[]');
+    for (const item of localItems) {
+      if (item.id) {
+        pendingDeletions.push({ table: 'sale_items', id: item.id });
+      }
+    }
+    pendingDeletions.push({ table: 'sales', id: saleId });
+    localStorage.setItem('pending_deletions', JSON.stringify(pendingDeletions));
+  }
+
+  // 4. Delete from local Dexie database and update local stock
+  await db.transaction('rw', [db.products, db.sales, db.saleItems], async () => {
+    // Restore local product stock
+    for (const item of localItems) {
+      const localProduct = await db.products.get(item.productId);
+      if (localProduct) {
+        await db.products.update(item.productId, {
+          stock: (localProduct.stock || 0) + (item.quantity || 0)
+        });
+      }
+    }
+    // Delete the sale items
+    await db.saleItems.where('saleId').equals(saleId).delete();
+    // Delete the sale itself
+    await db.sales.delete(saleId);
+  });
+}
+
 // ==================== عامل المزامنة الخلفية (Background Sync Work) ====================
 
 export async function syncOfflineData() {

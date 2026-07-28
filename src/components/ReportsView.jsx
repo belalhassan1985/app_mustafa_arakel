@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import {
@@ -11,8 +11,10 @@ import {
   ArrowRightLeft,
   LockKeyhole,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trash2
 } from 'lucide-react';
+import { deleteSale } from '../dataManager';
 
 const REPORTS_PIN = '19851985';
 const INVOICES_PER_PAGE = 12;
@@ -69,6 +71,12 @@ export default function ReportsView() {
   const [pinError, setPinError] = useState('');
   const [activeFilter, setActiveFilter] = useState('today');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // حالات حذف الفاتورة
+  const [saleToDelete, setSaleToDelete] = useState(null);
+  const [deletePin, setDeletePin] = useState('');
+  const [deletePinError, setDeletePinError] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredSales = useMemo(() => {
     return sales
@@ -127,6 +135,34 @@ export default function ReportsView() {
   const handleViewSale = (sale) => {
     setSelectedSale(sale);
     setSelectedSaleItems(saleItems.filter(item => item.saleId === sale.id));
+  };
+
+  const handleDeleteRequest = (sale) => {
+    setSaleToDelete(sale);
+    setDeletePin('');
+    setDeletePinError('');
+  };
+
+  const handleConfirmDelete = async (event) => {
+    event.preventDefault();
+    if (deletePin !== '19851985') {
+      setDeletePinError('رمز المرور غير صحيح');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteSale(saleToDelete.id);
+      setSaleToDelete(null);
+      setDeletePin('');
+      setDeletePinError('');
+      alert('تم حذف الفاتورة وإعادة المنتجات إلى المخزن بنجاح!');
+    } catch (err) {
+      console.error('فشل حذف الفاتورة:', err);
+      setDeletePinError('حدث خطأ غير متوقع أثناء الحذف.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handlePrint = () => {
@@ -264,9 +300,15 @@ export default function ReportsView() {
                         )}
                       </div>
 
-                      <button onClick={() => handleViewSale(sale)} className="p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shadow-sm" title="عرض تفاصيل الفاتورة">
-                        <Eye className="h-4.5 w-4.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => handleViewSale(sale)} className="p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shadow-sm" title="عرض تفاصيل الفاتورة">
+                          <Eye className="h-4.5 w-4.5" />
+                        </button>
+                        
+                        <button onClick={() => handleDeleteRequest(sale)} className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-xl transition-colors shadow-sm" title="حذف الفاتورة">
+                          <Trash2 className="h-4.5 w-4.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -365,11 +407,75 @@ export default function ReportsView() {
                 <span>إعادة طباعة</span>
               </button>
 
-              <button onClick={() => setSelectedSale(null)} className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold py-2.5 px-6 rounded-xl text-xs transition-colors">
+              <button
+                onClick={() => {
+                  setSelectedSale(null);
+                  handleDeleteRequest(selectedSale);
+                }}
+                className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+                title="حذف الفاتورة"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>حذف</span>
+              </button>
+
+              <button onClick={() => setSelectedSale(null)} className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold py-2.5 px-5 rounded-xl text-xs transition-colors">
                 <span>إغلاق</span>
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* نافذة إدخال رمز المرور لتأكيد الحذف */}
+      {saleToDelete && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
+          <form
+            onSubmit={handleConfirmDelete}
+            className="w-full max-w-sm bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/50 rounded-3xl p-5 text-center shadow-md backdrop-blur-md"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 animate-bounce">
+              <Trash2 className="h-6 w-6 text-red-500" />
+            </div>
+            <h2 className="text-sm font-black text-slate-800 dark:text-slate-100 mb-1">تأكيد حذف الفاتورة #{saleToDelete.id}</h2>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-4">
+              هذه العملية ستؤدي لحذف الفاتورة نهائياً وإعادة الكميات المباعة للمخزون. يرجى إدخال رمز تأكيد الحذف (PIN) للمتابعة.
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              value={deletePin}
+              onChange={(e) => {
+                setDeletePin(e.target.value);
+                setDeletePinError('');
+              }}
+              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-3 text-center text-lg font-black tracking-[0.35em] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-red-500"
+              placeholder="••••••••"
+              autoFocus
+            />
+            {deletePinError && <div className="text-[11px] text-red-500 font-bold mt-2">{deletePinError}</div>}
+            <div className="flex gap-2.5 mt-5">
+              <button
+                type="submit"
+                disabled={isDeleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-black py-3 rounded-2xl text-xs shadow-md shadow-red-950/20 transition-colors"
+              >
+                {isDeleting ? 'جاري الحذف...' : 'حذف نهائي'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSaleToDelete(null);
+                  setDeletePin('');
+                  setDeletePinError('');
+                }}
+                disabled={isDeleting}
+                className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold py-3 rounded-2xl text-xs transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

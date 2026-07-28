@@ -28,6 +28,7 @@ export default function POSView() {
   const [discount, setDiscount] = useState(0);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -80,7 +81,8 @@ export default function POSView() {
   const cartTotal = cartSubtotal - validDiscount;
 
   const handleConfirmCheckout = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isSubmitting) return;
+    setIsSubmitting(true);
     setCheckoutError(null);
 
     try {
@@ -100,6 +102,7 @@ export default function POSView() {
 
       await checkoutSale(saleData, cart);
 
+      // تفريغ السلة مباشرة بعد نجاح حفظ الفاتورة لمنع إرسال نفس السلة مرة أخرى
       setCart([]);
       setDiscount(0);
       setIsCartOpen(false);
@@ -108,6 +111,8 @@ export default function POSView() {
     } catch (error) {
       console.error('فشلت عملية البيع:', error);
       setCheckoutError(error.message || 'حدث خطأ غير متوقع أثناء إتمام عملية البيع.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -190,11 +195,11 @@ export default function POSView() {
 
       <button
         onClick={() => setShowReceiptModal(true)}
-        disabled={cart.length === 0}
+        disabled={cart.length === 0 || isSubmitting}
         className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-black py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md transition-colors mt-2"
       >
         <Receipt className="h-5 w-5" />
-        <span>إتمام عملية البيع وفاتورة</span>
+        <span>{isSubmitting ? "جاري إتمام البيع..." : "إتمام عملية البيع وفاتورة"}</span>
       </button>
     </div>
   );
@@ -440,15 +445,21 @@ export default function POSView() {
             <div className="no-print flex gap-2.5 mt-5">
               <button
                 onClick={handleConfirmCheckout}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-green-950 text-xs transition-colors"
+                disabled={isSubmitting}
+                className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 disabled:text-slate-600 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-green-950 text-xs transition-colors"
               >
-                <Check className="h-4 w-4" />
-                <span>تأكيد المبيعات</span>
+                {isSubmitting ? (
+                  <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-1"></span>
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                <span>{isSubmitting ? 'جاري إتمام البيع...' : 'تأكيد المبيعات'}</span>
               </button>
 
               <button
                 onClick={handlePrint}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 px-3.5 rounded-xl flex items-center justify-center gap-1 text-xs border border-slate-700/80 transition-colors"
+                disabled={isSubmitting}
+                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 font-bold py-2.5 px-3.5 rounded-xl flex items-center justify-center gap-1 text-xs border border-slate-700/80 transition-colors"
               >
                 <Printer className="h-4 w-4" />
                 <span>طباعة</span>
@@ -456,7 +467,8 @@ export default function POSView() {
 
               <button
                 onClick={() => setShowReceiptModal(false)}
-                className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 font-bold py-2.5 px-3.5 rounded-xl text-xs transition-colors"
+                disabled={isSubmitting}
+                className="bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-800 dark:text-slate-100 font-bold py-2.5 px-3.5 rounded-xl text-xs transition-colors"
               >
                 <span>إلغاء</span>
               </button>
