@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 
 const REPORTS_PIN = '19851985';
-const REPORTS_SESSION_KEY = 'reports_pin_unlocked';
 const INVOICES_PER_PAGE = 12;
 
 const timeFilters = [
@@ -75,7 +74,7 @@ export default function ReportsView() {
 
   const [selectedSale, setSelectedSale] = useState(null);
   const [selectedSaleItems, setSelectedSaleItems] = useState([]);
-  const [isReportsUnlocked, setIsReportsUnlocked] = useState(() => sessionStorage.getItem(REPORTS_SESSION_KEY) === 'true');
+  const [isReportsUnlocked, setIsReportsUnlocked] = useState(false);
   const [pinValue, setPinValue] = useState('');
   const [pinError, setPinError] = useState('');
   const [activeFilter, setActiveFilter] = useState('today');
@@ -129,7 +128,6 @@ export default function ReportsView() {
     event.preventDefault();
 
     if (pinValue === REPORTS_PIN) {
-      sessionStorage.setItem(REPORTS_SESSION_KEY, 'true');
       setIsReportsUnlocked(true);
       setPinValue('');
       setPinError('');
@@ -436,3 +434,5 @@ export default function ReportsView() {
     </div>
   );
 }
+
+
