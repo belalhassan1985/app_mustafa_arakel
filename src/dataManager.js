@@ -294,7 +294,11 @@ export async function checkoutSale(saleData, items) {
           date: saleData.date,
           total_amount: Number(saleData.totalAmount),
           discount: Number(saleData.discount),
-          final_amount: Number(saleData.finalAmount)
+          final_amount: Number(saleData.finalAmount),
+          payment_method: saleData.paymentMethod || 'cash',
+          status: saleData.status || 'paid',
+          customer_name: saleData.customerName || '',
+          paid_at: saleData.paidAt || null
         }])
         .select();
 
@@ -347,7 +351,11 @@ export async function checkoutSale(saleData, items) {
       totalAmount: saleData.totalAmount,
       discount: saleData.discount,
       finalAmount: saleData.finalAmount,
-      syncStatus: synced ? 'synced' : 'pending'
+      syncStatus: synced ? 'synced' : 'pending',
+      paymentMethod: saleData.paymentMethod || 'cash',
+      status: saleData.status || 'paid',
+      customerName: saleData.customerName || '',
+      paidAt: saleData.paidAt || null
     });
 
     // حفظ المواد وتحديث المخزون محلياً
@@ -460,6 +468,47 @@ export async function deleteSale(saleId) {
   });
 }
 
+export async function markSaleAsPaid(saleId) {
+  const isOnline = navigator.onLine;
+  const paidAt = new Date().toISOString();
+
+  // تحديث الفاتورة محلياً في Dexie
+  const sale = await db.sales.get(saleId);
+  if (!sale) throw new Error('الفاتورة غير موجودة');
+
+  await db.sales.update(saleId, {
+    status: 'paid',
+    paidAt: paidAt
+  });
+
+  // مزامنة التحديث مع Supabase
+  let updatedOnSupabase = false;
+  if (isOnline && sale.syncStatus !== 'pending') {
+    try {
+      const { error } = await supabase
+        .from('sales')
+        .update({
+          status: 'paid',
+          paid_at: paidAt
+        })
+        .eq('id', saleId);
+
+      if (error) throw error;
+      updatedOnSupabase = true;
+    } catch (err) {
+      console.error('فشل تحديث حالة الفاتورة على Supabase، سيتم جدولتها للتحديث لاحقاً:', err);
+    }
+  }
+
+  // إذا كان التطبيق أوفلاين أو فشل الاتصال، نقوم بجدولة التحديث
+  if (!updatedOnSupabase && sale.syncStatus !== 'pending') {
+    const pendingUpdates = JSON.parse(localStorage.getItem('pending_sale_updates') || '[]');
+    const filtered = pendingUpdates.filter(u => u.id !== saleId);
+    filtered.push({ id: saleId, status: 'paid', paidAt });
+    localStorage.setItem('pending_sale_updates', JSON.stringify(filtered));
+  }
+}
+
 // ==================== عامل المزامنة الخلفية (Background Sync Work) ====================
 
 export async function syncOfflineData() {
@@ -485,6 +534,26 @@ export async function syncOfflineData() {
         }
       }
       localStorage.setItem('pending_deletions', JSON.stringify(remainingDeletions));
+    }
+
+    // أ.2 معالجة التحديثات المؤجلة (تسديد الدين)
+    const pendingUpdates = JSON.parse(localStorage.getItem('pending_sale_updates') || '[]');
+    if (pendingUpdates.length > 0) {
+      const remainingUpdates = [];
+      for (const upd of pendingUpdates) {
+        try {
+          const { error } = await supabase
+            .from('sales')
+            .update({ status: upd.status, paid_at: upd.paidAt })
+            .eq('id', upd.id);
+
+          if (error) throw error;
+        } catch (err) {
+          console.error(`فشل مزامنة تحديث الفاتورة ${upd.id}:`, err);
+          remainingUpdates.push(upd);
+        }
+      }
+      localStorage.setItem('pending_sale_updates', JSON.stringify(remainingUpdates));
     }
 
     // ب. مزامنة التصنيفات المعلقة
@@ -640,7 +709,11 @@ export async function syncOfflineData() {
             date: sale.date,
             total_amount: sale.totalAmount,
             discount: sale.discount,
-            final_amount: sale.finalAmount
+            final_amount: sale.finalAmount,
+            payment_method: sale.paymentMethod || 'cash',
+            status: sale.status || 'paid',
+            customer_name: sale.customerName || '',
+            paid_at: sale.paidAt || null
           }])
           .select();
 
@@ -762,7 +835,11 @@ export async function pullAllData() {
           totalAmount: sale.total_amount,
           discount: sale.discount,
           finalAmount: sale.final_amount,
-          syncStatus: 'synced'
+          syncStatus: 'synced',
+          paymentMethod: sale.payment_method || 'cash',
+          status: sale.status || 'paid',
+          customerName: sale.customer_name || '',
+          paidAt: sale.paid_at || null
         });
       }
     }

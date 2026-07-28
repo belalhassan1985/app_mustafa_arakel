@@ -29,6 +29,8 @@ export default function POSView() {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash' or 'credit'
+  const [customerName, setCustomerName] = useState('');
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -82,6 +84,13 @@ export default function POSView() {
 
   const handleConfirmCheckout = async () => {
     if (cart.length === 0 || isSubmitting) return;
+
+    // التحقق من إدخال اسم الزبون للدفع بالآجل
+    if (paymentMethod === 'credit' && !customerName.trim()) {
+      setCheckoutError('يرجى كتابة اسم الزبون للفاتورة الآجلة.');
+      return;
+    }
+
     setIsSubmitting(true);
     setCheckoutError(null);
 
@@ -97,7 +106,10 @@ export default function POSView() {
         date: new Date().toISOString(),
         totalAmount: cartSubtotal,
         discount: validDiscount,
-        finalAmount: cartTotal
+        finalAmount: cartTotal,
+        paymentMethod,
+        status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
+        customerName: paymentMethod === 'credit' ? customerName.trim() : ''
       };
 
       await checkoutSale(saleData, cart);
@@ -105,6 +117,8 @@ export default function POSView() {
       // تفريغ السلة مباشرة بعد نجاح حفظ الفاتورة لمنع إرسال نفس السلة مرة أخرى
       setCart([]);
       setDiscount(0);
+      setPaymentMethod('cash');
+      setCustomerName('');
       setIsCartOpen(false);
       setShowReceiptModal(false);
       alert('تم إتمام عملية البيع وحفظ الفاتورة بنجاح!');
@@ -194,7 +208,12 @@ export default function POSView() {
       </div>
 
       <button
-        onClick={() => setShowReceiptModal(true)}
+        onClick={() => {
+          setPaymentMethod('cash');
+          setCustomerName('');
+          setCheckoutError(null);
+          setShowReceiptModal(true);
+        }}
         disabled={cart.length === 0 || isSubmitting}
         className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-black py-3 rounded-2xl flex items-center justify-center gap-2 shadow-md transition-colors mt-2"
       >
@@ -393,6 +412,10 @@ export default function POSView() {
                   <span>التاريخ: {new Date().toLocaleDateString('ar-EG')}</span>
                   <span>الوقت: {new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-600 px-1 mt-1 border-t border-dashed border-slate-200 pt-1">
+                  <span>طريقة الدفع: {paymentMethod === 'credit' ? 'آجل (دين)' : 'نقدي'}</span>
+                  {paymentMethod === 'credit' && <span className="font-bold">الزبون: {customerName}</span>}
+                </div>
               </div>
 
               <table className="w-full text-right text-[11px] mb-4">
@@ -434,6 +457,49 @@ export default function POSView() {
               <div className="mt-4 text-center">
                 <p className="text-[10px] text-slate-400 font-bold">شكراً لزيارتكم! نتشرف بزيارتكم دائماً.</p>
               </div>
+            </div>
+
+            {/* خيار تحديد طريقة الدفع (نقدي / آجل) */}
+            <div className="no-print mt-4 p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-2 text-right">طريقة الدفع:</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`py-2 px-3 rounded-xl text-xs font-black transition-all duration-200 ${
+                    paymentMethod === 'cash'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm font-extrabold'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  نقدي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('credit')}
+                  className={`py-2 px-3 rounded-xl text-xs font-black transition-all duration-200 ${
+                    paymentMethod === 'credit'
+                      ? 'bg-red-500 text-white shadow-sm font-extrabold'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  آجل (دين)
+                </button>
+              </div>
+
+              {paymentMethod === 'credit' && (
+                <div className="mt-3 text-right">
+                  <label className="text-[10px] font-bold text-red-500 dark:text-red-400 block mb-1">اسم الزبون (مطلوب):</label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:border-red-500 focus:outline-none"
+                    placeholder="اكتب اسم الزبون..."
+                    required
+                  />
+                </div>
+              )}
             </div>
 
             {checkoutError && (

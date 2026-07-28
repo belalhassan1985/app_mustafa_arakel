@@ -12,9 +12,11 @@ import {
   LockKeyhole,
   ChevronLeft,
   ChevronRight,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  Check
 } from 'lucide-react';
-import { deleteSale } from '../dataManager';
+import { deleteSale, markSaleAsPaid } from '../dataManager';
 
 const REPORTS_PIN = '19851985';
 const INVOICES_PER_PAGE = 12;
@@ -80,15 +82,35 @@ export default function ReportsView() {
 
   const filteredSales = useMemo(() => {
     return sales
-      .filter(sale => isSaleInRange(sale, activeFilter))
+      .filter(sale => {
+        if (activeFilter === 'unpaid_credit') {
+          return sale.paymentMethod === 'credit' && sale.status === 'unpaid';
+        }
+        return isSaleInRange(sale, activeFilter);
+      })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [sales, activeFilter]);
+
+  const unpaidCreditCount = useMemo(() => {
+    return sales.filter(sale => sale.paymentMethod === 'credit' && sale.status === 'unpaid').length;
+  }, [sales]);
 
   const stats = useMemo(() => {
     const totalSalesAmount = filteredSales.reduce((sum, sale) => sum + Number(sale.finalAmount || 0), 0);
     let totalProfitAmount = 0;
+    let totalDebtAmount = 0;
+    let actualCashAmount = 0;
 
     filteredSales.forEach(sale => {
+      const finalAmount = Number(sale.finalAmount || 0);
+
+      // حساب المبيعات النقدية مقابل الآجل
+      if (sale.paymentMethod === 'credit' && sale.status === 'unpaid') {
+        totalDebtAmount += finalAmount;
+      } else {
+        actualCashAmount += finalAmount;
+      }
+
       const currentItems = saleItems.filter(item => item.saleId === sale.id);
       const itemsProfit = currentItems.reduce((sum, item) => {
         const margin = Number(item.unitPrice || 0) - Number(item.unitBuyPrice || 0);
@@ -100,7 +122,9 @@ export default function ReportsView() {
     return {
       totalSales: totalSalesAmount,
       totalProfit: Math.max(0, totalProfitAmount),
-      invoiceCount: filteredSales.length
+      invoiceCount: filteredSales.length,
+      totalDebt: totalDebtAmount,
+      actualCash: actualCashAmount
     };
   }, [filteredSales, saleItems]);
 
@@ -165,6 +189,17 @@ export default function ReportsView() {
     }
   };
 
+  const handleMarkAsPaid = async (saleId) => {
+    if (!window.confirm('هل أنت متأكد من تسديد هذه الفاتورة الآجلة؟')) return;
+    try {
+      await markSaleAsPaid(saleId);
+      alert('تم تسديد الفاتورة بنجاح!');
+    } catch (err) {
+      console.error('فشلت تسديد الفاتورة:', err);
+      alert('حدث خطأ أثناء محاولة تسديد الفاتورة.');
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -211,30 +246,55 @@ export default function ReportsView() {
           <span>ملخص المبيعات</span>
         </h3>
 
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {/* إجمالي المبيعات الشاملة */}
           <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-right shadow-sm dark:shadow-md">
             <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
               <DollarSign className="h-3 w-3 text-amber-500" />
-              <span>إجمالي المبيعات</span>
+              <span>المبيعات الشاملة</span>
             </div>
             <div className="text-xs font-black text-amber-600 dark:text-amber-400 truncate">
               {stats.totalSales.toLocaleString()} <span className="text-[8px]">د.ع</span>
             </div>
           </div>
 
+          {/* الصندوق النقدي الفعلي */}
           <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-right shadow-sm dark:shadow-md">
             <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
-              <TrendingUp className="h-3 w-3 text-green-500" />
+              <TrendingUp className="h-3 w-3 text-emerald-500" />
+              <span>الصندوق النقدي</span>
+            </div>
+            <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 truncate">
+              {stats.actualCash.toLocaleString()} <span className="text-[8px]">د.ع</span>
+            </div>
+          </div>
+
+          {/* الديون المعلقة */}
+          <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-right shadow-sm dark:shadow-md col-span-2 sm:col-span-1">
+            <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+              <AlertTriangle className="h-3 w-3 text-red-500" />
+              <span>ديون معلقة</span>
+            </div>
+            <div className="text-xs font-black text-red-600 dark:text-red-400 truncate">
+              {stats.totalDebt.toLocaleString()} <span className="text-[8px]">د.ع</span>
+            </div>
+          </div>
+
+          {/* إجمالي الأرباح */}
+          <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-right shadow-sm dark:shadow-md">
+            <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+              <TrendingUp className="h-3 w-3 text-teal-500" />
               <span>إجمالي الأرباح</span>
             </div>
-            <div className="text-xs font-black text-green-600 dark:text-green-400 truncate">
+            <div className="text-xs font-black text-teal-600 dark:text-teal-400 truncate">
               {stats.totalProfit.toLocaleString()} <span className="text-[8px]">د.ع</span>
             </div>
           </div>
 
+          {/* عدد الفواتير */}
           <div className="bg-white dark:bg-slate-800/90 backdrop-blur-md border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3 text-right shadow-sm dark:shadow-md">
             <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
-              <FileText className="h-3 w-3 text-amber-500" />
+              <FileText className="h-3 w-3 text-blue-500" />
               <span>عدد الفواتير</span>
             </div>
             <div className="text-xs font-black text-slate-800 dark:text-slate-200 truncate">
@@ -251,7 +311,7 @@ export default function ReportsView() {
         </h3>
 
         <div className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-2 shadow-sm dark:shadow-md">
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
             {timeFilters.map(filter => (
               <button
                 key={filter.key}
@@ -261,6 +321,16 @@ export default function ReportsView() {
                 {filter.label}
               </button>
             ))}
+            <button
+              onClick={() => setActiveFilter('unpaid_credit')}
+              className={`py-2 px-2 rounded-xl text-[11px] font-black transition-all col-span-2 sm:col-span-1 ${
+                activeFilter === 'unpaid_credit'
+                  ? 'bg-red-500 text-white shadow-sm font-extrabold'
+                  : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 border border-red-200/40 dark:border-red-900/30'
+              }`}
+            >
+              الديون المعلقة ({unpaidCreditCount})
+            </button>
           </div>
         </div>
 
@@ -276,16 +346,30 @@ export default function ReportsView() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black text-slate-800 dark:text-slate-200">فاتورة #{sale.id}</span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                          {saleDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
                         {sale.syncStatus === 'pending' ? (
                           <span className="text-[9px] bg-amber-500/10 text-amber-500 font-bold px-1.5 py-0.5 rounded-md border border-amber-550/20 animate-pulse">أوفلاين</span>
                         ) : (
                           <span className="text-[9px] bg-green-500/10 text-green-550 dark:text-green-400 font-bold px-1.5 py-0.5 rounded-md border border-green-550/20">مزامنة</span>
                         )}
                       </div>
-                      <div className="text-[10px] text-slate-500 mt-1.5 font-bold">{saleDate.toLocaleDateString('ar-EG')}</div>
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {saleDate.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {sale.paymentMethod === 'credit' ? (
+                          sale.status === 'unpaid' ? (
+                            <span className="text-[9px] bg-red-500/10 text-red-600 dark:text-red-400 font-bold px-1.5 py-0.5 rounded-md border border-red-500/20">آجل - غير مسدد ({sale.customerName})</span>
+                          ) : (
+                            <span className="text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold px-1.5 py-0.5 rounded-md border border-blue-500/20">آجل - تم التسديد ({sale.customerName})</span>
+                          )
+                        ) : (
+                          <span className="text-[9px] bg-slate-500/10 text-slate-600 dark:text-slate-400 font-bold px-1.5 py-0.5 rounded-md border border-slate-500/20">نقدي</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1 font-bold">
+                        {saleDate.toLocaleDateString('ar-EG')}
+                        {sale.paidAt && <span className="text-green-600 dark:text-green-400 mr-2">(سُدد: {new Date(sale.paidAt).toLocaleDateString('ar-EG')})</span>}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -300,7 +384,17 @@ export default function ReportsView() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {sale.paymentMethod === 'credit' && sale.status === 'unpaid' && (
+                          <button
+                            onClick={() => handleMarkAsPaid(sale.id)}
+                            className="py-1.5 px-2 bg-green-500 hover:bg-green-600 text-slate-950 rounded-xl transition-colors shadow-sm text-[10px] font-black"
+                            title="تأكيد تسديد الفاتورة"
+                          >
+                            تم التسديد
+                          </button>
+                        )}
+                        
                         <button onClick={() => handleViewSale(sale)} className="p-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors shadow-sm" title="عرض تفاصيل الفاتورة">
                           <Eye className="h-4.5 w-4.5" />
                         </button>
@@ -401,18 +495,31 @@ export default function ReportsView() {
               </div>
             </div>
 
-            <div className="no-print flex gap-2.5 mt-5">
-              <button onClick={handlePrint} className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-950/30 text-xs transition-colors">
+            <div className="no-print flex flex-wrap gap-2 mt-5">
+              <button onClick={handlePrint} className="flex-1 min-w-[100px] bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-amber-950/30 text-xs transition-colors">
                 <Printer className="h-4 w-4 text-slate-950" />
                 <span>إعادة طباعة</span>
               </button>
+
+              {selectedSale.paymentMethod === 'credit' && selectedSale.status === 'unpaid' && (
+                <button
+                  onClick={() => {
+                    handleMarkAsPaid(selectedSale.id);
+                    setSelectedSale(null);
+                  }}
+                  className="flex-1 min-w-[100px] bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-md text-xs transition-colors"
+                >
+                  <Check className="h-4 w-4" />
+                  <span>تسديد الدين</span>
+                </button>
+              )}
 
               <button
                 onClick={() => {
                   setSelectedSale(null);
                   handleDeleteRequest(selectedSale);
                 }}
-                className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+                className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 py-2.5 px-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
                 title="حذف الفاتورة"
               >
                 <Trash2 className="h-4 w-4" />
