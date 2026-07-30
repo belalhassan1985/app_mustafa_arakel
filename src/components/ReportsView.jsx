@@ -17,6 +17,7 @@ import {
   Check
 } from 'lucide-react';
 import { deleteSale, markSaleAsPaid } from '../dataManager';
+import { getBusinessDateRange } from '../utils/businessDateHelper';
 
 const REPORTS_PIN = '19851985';
 const INVOICES_PER_PAGE = 12;
@@ -28,25 +29,8 @@ const timeFilters = [
   { key: 'all', label: 'الكلي' }
 ];
 
-function getDateRange(filterKey) {
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-
-  if (filterKey === 'today') return { start, end: now };
-  if (filterKey === 'week') {
-    start.setDate(start.getDate() - start.getDay());
-    return { start, end: now };
-  }
-  if (filterKey === 'month') {
-    start.setDate(1);
-    return { start, end: now };
-  }
-  return { start: null, end: null };
-}
-
 function isSaleInRange(sale, filterKey) {
-  const { start, end } = getDateRange(filterKey);
+  const { start, end } = getBusinessDateRange(filterKey);
   if (!start || !end) return true;
   const saleDate = new Date(sale.date);
   return saleDate >= start && saleDate <= end;
