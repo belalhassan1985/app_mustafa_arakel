@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { checkoutSale } from '../dataManager';
+import { getBusinessDate } from '../utils/businessDateHelper';
 import {
   Search,
   ShoppingCart,
@@ -409,7 +410,7 @@ export default function POSView() {
                 <p className="text-[10px] text-slate-500 font-semibold mt-0.5">متجر فيب، أراكيل، معسل وملحقات</p>
                 <div className="border-b border-dashed border-slate-300 my-3"></div>
                 <div className="flex justify-between items-center text-[10px] text-slate-600 px-1">
-                  <span>التاريخ: {new Date().toLocaleDateString('ar-EG')}</span>
+                  <span>التاريخ: {getBusinessDate().toLocaleDateString('ar-EG')}</span>
                   <span>الوقت: {new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-slate-600 px-1 mt-1 border-t border-dashed border-slate-200 pt-1">

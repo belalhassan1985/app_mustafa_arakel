@@ -54,3 +54,19 @@ export function getBusinessDateRange(filterKey, now = new Date()) {
 
   return { start: null, end: null };
 }
+
+/**
+ * Returns the calendar date corresponding to the current business day.
+ * For example, if it is 1:00 AM on August 2nd, the business date is August 1st.
+ * 
+ * @param {Date|string} dateVal - The reference time (defaults to current system time).
+ * @returns {Date} The business day date (midnight of the business day).
+ */
+export function getBusinessDate(dateVal = new Date()) {
+  const dateObj = typeof dateVal === 'string' ? new Date(dateVal) : dateVal;
+  const { start } = getBusinessDayRange(dateObj);
+  const businessDate = new Date(start);
+  businessDate.setHours(0, 0, 0, 0);
+  return businessDate;
+}
+

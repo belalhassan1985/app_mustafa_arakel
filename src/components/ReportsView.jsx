@@ -17,7 +17,7 @@ import {
   Check
 } from 'lucide-react';
 import { deleteSale, markSaleAsPaid } from '../dataManager';
-import { getBusinessDateRange } from '../utils/businessDateHelper';
+import { getBusinessDateRange, getBusinessDate } from '../utils/businessDateHelper';
 
 const REPORTS_PIN = '19851985';
 const INVOICES_PER_PAGE = 12;
@@ -351,8 +351,8 @@ export default function ReportsView() {
                         )}
                       </div>
                       <div className="text-[10px] text-slate-500 mt-1 font-bold">
-                        {saleDate.toLocaleDateString('ar-EG')}
-                        {sale.paidAt && <span className="text-green-600 dark:text-green-400 mr-2">(سُدد: {new Date(sale.paidAt).toLocaleDateString('ar-EG')})</span>}
+                        {getBusinessDate(sale.date).toLocaleDateString('ar-EG')}
+                        {sale.paidAt && <span className="text-green-600 dark:text-green-400 mr-2">(سُدد: {getBusinessDate(sale.paidAt).toLocaleDateString('ar-EG')})</span>}
                       </div>
                     </div>
 
@@ -430,7 +430,7 @@ export default function ReportsView() {
                 <p className="text-[10px] text-slate-500 font-semibold mt-0.5">متجر فيب، أراكيل، معسل وملحقات</p>
                 <div className="border-b border-dashed border-slate-300 my-3"></div>
                 <div className="flex justify-between items-center text-[10px] text-slate-600 px-1">
-                  <span>التاريخ: {new Date(selectedSale.date).toLocaleDateString('ar-EG')}</span>
+                  <span>التاريخ: {getBusinessDate(selectedSale.date).toLocaleDateString('ar-EG')}</span>
                   <span>الوقت: {new Date(selectedSale.date).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="text-[10px] text-slate-700 font-bold bg-slate-100 py-1 rounded-md mt-2">
